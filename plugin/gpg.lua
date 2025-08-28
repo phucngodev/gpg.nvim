@@ -10,6 +10,8 @@ vim.api.nvim_create_autocmd({ "BufReadPre", "FileReadPre" }, {
     vim.opt_local.swapfile = false
     -- Switch to binary mode to read the encrypted file
     vim.opt_local.bin = true
+    -- Disable undofile as it stores unencrypted data on your disk
+    vim.opt_local.undofile = false
 
     -- Save the current 'ch' value to a buffer-local variable
     vim.b.ch_save = vim.o.ch
