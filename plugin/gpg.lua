@@ -5,13 +5,16 @@ vim.api.nvim_create_autocmd({ "BufReadPre", "FileReadPre" }, {
   group = gpgGroup,
   callback = function()
     -- Make sure nothing is written to shada file while editing an encrypted file.
-    vim.opt_local.shada = nil
+    vim.opt.shada = ""
     -- We don't want a swap file, as it writes unencrypted data to disk
     vim.opt_local.swapfile = false
     -- Switch to binary mode to read the encrypted file
     vim.opt_local.bin = true
     -- Disable undofile as it stores unencrypted data on your disk
     vim.opt_local.undofile = false
+    -- Also avoid backups for this buffer
+    vim.opt_local.backup = false
+    vim.opt_local.writebackup = false
 
     -- Save the current 'ch' value to a buffer-local variable
     vim.b.ch_save = vim.o.ch
