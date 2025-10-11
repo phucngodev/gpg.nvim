@@ -13,7 +13,7 @@ vim.api.nvim_create_autocmd({ "BufReadPre", "FileReadPre" }, {
     -- Disable undofile as it stores unencrypted data on your disk
     vim.opt_local.undofile = false
     -- Also avoid backups for this buffer
-    vim.opt_local.backup = true
+    vim.opt_local.backup = false
     vim.opt_local.writebackup = false
 
     -- Save the current 'ch' value to a buffer-local variable
