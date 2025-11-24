@@ -22,6 +22,15 @@ vim.api.nvim_create_autocmd({ "BufReadPre", "FileReadPre" }, {
   end,
 })
 
+vim.api.nvim_create_autocmd("BufReadPost", {
+  pattern = "*.md.gpg",
+  group = gpgGroup,
+  callback = function()
+    vim.bo.filetype = "markdown"
+  end,
+  desc = "Set filetype to markdown for .md.gpg files",
+})
+
 vim.api.nvim_create_autocmd({ "BufReadPost", "FileReadPost" }, {
   pattern = "*.gpg",
   group = gpgGroup,
