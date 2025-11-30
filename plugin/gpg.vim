@@ -7,6 +7,42 @@ if exists('g:loaded_gpg')
 endif
 let g:loaded_gpg = 1
 
+" Default configuration options
+if !exists('g:gpg_executable')
+  let g:gpg_executable = 'gpg'
+endif
+
+if !exists('g:gpg_recipient')
+  let g:gpg_recipient = ''
+endif
+
+if !exists('g:gpg_encrypt_options')
+  let g:gpg_encrypt_options = '--default-recipient-self -ae'
+endif
+
+if !exists('g:gpg_decrypt_options')
+  let g:gpg_decrypt_options = '--decrypt'
+endif
+
+if !exists('g:gpg_show_error')
+  let g:gpg_show_error = 1
+endif
+
+if !exists('g:gpg_disable_autocmds')
+  let g:gpg_disable_autocmds = 0
+endif
+
+" Validate GPG executable exists
+function! s:ValidateGPG()
+  if !executable(g:gpg_executable)
+    echohl ErrorMsg
+    echomsg 'GPG executable not found: ' . g:gpg_executable
+    echohl None
+    return 0
+  endif
+  return 1
+endfunction
+
 " Create augroup for GPG functionality
 augroup customGpg
   autocmd!
@@ -15,21 +51,26 @@ augroup END
 " Set up options before reading GPG files
 augroup customGpg
   autocmd BufReadPre,FileReadPre *.gpg
-    \ if empty(&buftype) && !&modified && expand('<amatch>') =~# '\.gpg$' && !exists('g:disable_gpg_autocmds') | call s:PrepareGpgRead() | endif
+    \ if empty(&buftype) && !&modified && expand('<amatch>') =~# '\.gpg$' && !g:gpg_disable_autocmds | call s:PrepareGpgRead() | endif
   " Set filetype for markdown files after they are read
   autocmd BufReadPost *.gpg
-    \ if empty(&buftype) && expand('<afile>') =~# '\.md\.gpg$' && !exists('g:disable_gpg_autocmds') | call s:SetMarkdownFiletype() | endif
+    \ if empty(&buftype) && expand('<afile>') =~# '\.md\.gpg$' && !g:gpg_disable_autocmds | call s:SetMarkdownFiletype() | endif
   autocmd BufReadPost,FileReadPost *.gpg
-    \ if empty(&buftype) && expand('<amatch>') =~# '\.gpg$' && !exists('g:disable_gpg_autocmds') | call s:DecryptGpgFile() | endif
+    \ if empty(&buftype) && expand('<amatch>') =~# '\.gpg$' && !g:gpg_disable_autocmds | call s:DecryptGpgFile() | endif
   autocmd BufWritePre,FileWritePre *.gpg
-    \ if empty(&buftype) && expand('<amatch>') =~# '\.gpg$' && !exists('g:disable_gpg_autocmds') | call s:EncryptGpgFile() | endif
+    \ if empty(&buftype) && expand('<amatch>') =~# '\.gpg$' && !g:gpg_disable_autocmds | call s:EncryptGpgFile() | endif
   autocmd BufWritePost *.gpg
-    \ if empty(&buftype) && expand('<amatch>') =~# '\.gpg$' && !exists('g:disable_gpg_autocmds') | call s:UndoEncryption() | endif
+    \ if empty(&buftype) && expand('<amatch>') =~# '\.gpg$' && !g:gpg_disable_autocmds | call s:UndoEncryption() | endif
 augroup END
 
 function! s:PrepareGpgRead()
   " Use try-catch to prevent errors from propagating
   try
+    " Validate GPG executable exists
+    if !s:ValidateGPG()
+      return
+    endif
+
     " Make sure nothing is written to shada file while editing an encrypted file
     setlocal shada=
     " We don't want a swap file, as it writes unencrypted data to disk
@@ -44,8 +85,11 @@ function! s:PrepareGpgRead()
     " Save the current 'ch' value to a buffer-local variable
     let b:ch_save = &ch
     let &ch = 2
+
+    " Mark this buffer as a GPG buffer
+    let b:gpg_encrypted = 1
   catch
-    " If there's an error, just continue without changes
+    call s:HandleError('Error preparing GPG file for reading')
     return
   endtry
 endfunction
@@ -55,7 +99,7 @@ function! s:SetMarkdownFiletype()
   try
     let &filetype = 'markdown'
   catch
-    " If there's an error, just continue without changes
+    call s:HandleError('Error setting markdown filetype')
     return
   endtry
 endfunction
@@ -66,11 +110,25 @@ function! s:DecryptGpgFile()
     " Check if the file actually exists and is readable before attempting to decrypt
     let l:filename = expand('<afile>')
     if !filereadable(l:filename)
+      call s:HandleError('File not readable: ' . l:filename)
       return
     endif
 
-    " Decrypt the file content
-    silent execute "'[,']!gpg --decrypt 2> /dev/null"
+    " Store original buffer content for error recovery
+    let b:gpg_original_content = getline(1, '$')
+
+    " Execute GPG decryption on the current buffer content using the pipe operator
+    " This is the standard Vim approach for filtering buffer content through external commands
+    let l:decrypt_cmd = g:gpg_executable . ' ' . g:gpg_decrypt_options
+    silent execute "'[,']!" . l:decrypt_cmd . " 2>/dev/null"
+
+    " Check if decryption succeeded by checking shell error after the command
+    if v:shell_error != 0
+      " If decryption failed, restore original content and show error
+      call setline(1, b:gpg_original_content)
+      call s:HandleError('GPG decryption failed: Check your GPG configuration and passphrase')
+      return
+    endif
 
     " Switch to normal mode for editing
     setlocal nobin
@@ -84,7 +142,11 @@ function! s:DecryptGpgFile()
     " Execute the BufReadPost autocmd for the base filename
     execute 'doautocmd BufReadPost ' . expand('%:r')
   catch
-    " If there's an error during decryption, just continue
+    call s:HandleError('Error during GPG decryption')
+    " Restore original content on error
+    if exists('b:gpg_original_content')
+      call setline(1, b:gpg_original_content)
+    endif
     return
   endtry
 endfunction
@@ -92,10 +154,33 @@ endfunction
 function! s:EncryptGpgFile()
   " Use try-catch to handle potential errors during encryption
   try
-    " Encrypt the file content before writing
-    silent execute "'[,']!gpg --default-recipient-self -ae 2> /dev/null"
+    " Validate GPG executable exists
+    if !s:ValidateGPG()
+      return
+    endif
+
+    " Store original content for error recovery
+    let b:gpg_unencrypted_content = getline(1, '$')
+
+    " Execute GPG encryption on the current buffer content using the pipe operator
+    let l:encrypt_cmd = g:gpg_executable . ' ' . g:gpg_encrypt_options
+    silent execute "'[,']!" . l:encrypt_cmd . " 2>/dev/null"
+
+    " Check if encryption succeeded
+    if v:shell_error != 0
+      call s:HandleError('GPG encryption failed: Check your GPG configuration')
+      " Restore original content on error
+      if exists('b:gpg_unencrypted_content')
+        call setline(1, b:gpg_unencrypted_content)
+      endif
+      return
+    endif
   catch
-    " If there's an error during encryption, just continue
+    call s:HandleError('Error during GPG encryption')
+    " Restore original content on error
+    if exists('b:gpg_unencrypted_content')
+      call setline(1, b:gpg_unencrypted_content)
+    endif
     return
   endtry
 endfunction
@@ -103,10 +188,36 @@ endfunction
 function! s:UndoEncryption()
   " Use try-catch to handle potential errors during undo
   try
-    " Undo the encryption so we are back to normal text after file has been written
-    silent undo
+    " Only undo if this is a GPG buffer
+    if !exists('b:gpg_encrypted')
+      return
+    endif
+
+    " Restore the unencrypted content
+    if exists('b:gpg_unencrypted_content')
+      silent %delete _
+      call setline(1, b:gpg_unencrypted_content)
+      unlet b:gpg_unencrypted_content
+    else
+      " Fallback to undo if we don't have stored content
+      silent undo
+    endif
   catch
-    " If there's an error during undo, just continue
+    call s:HandleError('Error restoring unencrypted content')
     return
   endtry
 endfunction
+
+function! s:HandleError(msg)
+  if g:gpg_show_error
+    echohl ErrorMsg
+    echomsg 'GPG Plugin Error: ' . a:msg
+    echohl None
+  endif
+endfunction
+
+" Command to manually re-encrypt current buffer
+command! GpgEncrypt call s:EncryptGpgFile()
+
+" Command to manually decrypt current buffer
+command! GpgDecrypt call s:DecryptGpgFile()

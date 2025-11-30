@@ -4,7 +4,7 @@
 
 # gpg.nvim
 
-Editing GPG encrypted files symmetrically in Vim 8+ and Neovim
+Editing GPG encrypted files symmetrically in Vim 8+
 
 ![Demo](https://github.com/user-attachments/assets/2127cbe4-4199-4d0f-b9a3-b94798184cae)
 
@@ -13,44 +13,64 @@ Editing GPG encrypted files symmetrically in Vim 8+ and Neovim
 - Transparent encryption/decryption of `.gpg` files
 - Support for specific file types (e.g., `.md.gpg` files are treated as markdown)
 - Secure handling (disables swap files, undofiles, and shada for encrypted buffers)
-- Works with both Vim 8+ and Neovim
+- Configurable GPG options and executable path
+- Improved error handling and user feedback
+- Vim 8+ compatible only
 
 ## Install
 
-### For vim-plug (Neovim/Vim 8+):
+### For vim-plug (Vim 8+):
 ```vim
 Plug 'benoror/gpg.nvim'
 ```
 
-### For packer.nvim (Neovim):
-```lua
-use 'benoror/gpg.nvim'
-```
-
-### For lazy.nvim (Neovim):
-```lua
-{
-   "benoror/gpg.nvim",
-}
-```
-
-### For Pathogen (Vim 8+/Neovim):
+### For Pathogen (Vim 8+):
 ```bash
-cd ~/.vim/bundle  # or ~/.config/nvim/bundle for Neovim
+cd ~/.vim/bundle
 git clone https://github.com/benoror/gpg.nvim.git
 ```
 
 ## Requirements
 
 - `gpg`
-- Optional: `pinentry-mac`
-- Vim 8.0+ or Neovim 0.5+
+- Vim 8.0+
+
+## Configuration
+
+The plugin provides several configuration options that can be set in your `.vimrc`:
+
+```vim
+" Path to GPG executable (default: 'gpg')
+let g:gpg_executable = 'gpg'
+
+" GPG recipient for encryption (default: uses --default-recipient-self)
+let g:gpg_recipient = 'your@email.com'
+
+" Additional GPG encryption options (default: '--default-recipient-self -ae')
+let g:gpg_encrypt_options = '--default-recipient-self -ae'
+
+" Additional GPG decryption options (default: '--decrypt')
+let g:gpg_decrypt_options = '--decrypt'
+
+" Show detailed error messages (default: 1)
+let g:gpg_show_error = 1
+
+" Disable GPG autocmds if needed (default: 0)
+let g:gpg_disable_autocmds = 0
+```
 
 ## Usage
 
-All `*.gpg` files will be symmetrically decrypted/encrypted transparently using `gpg` tools. Simply open any `.gpg` file in Vim or Neovim and it will be automatically decrypted for editing. When you save the file, it will be encrypted again.
+All `*.gpg` files will be symmetrically decrypted/encrypted transparently using `gpg` tools. Simply open any `.gpg` file in Vim and it will be automatically decrypted for editing. When you save the file, it will be encrypted again.
 
 For `.md.gpg` files, the plugin will set the filetype to markdown so you get proper syntax highlighting.
+
+### Commands
+
+The plugin provides these additional commands:
+
+- `:GpgEncrypt` - Manually encrypt the current buffer
+- `:GpgDecrypt` - Manually decrypt the current buffer
 
 ## How It Works
 
@@ -61,12 +81,18 @@ The plugin sets up several autocmds that:
 3. Before writing: Encrypts the content
 4. After writing: Restores the unencrypted view
 
+## Security
+
+The plugin takes several security measures:
+
+- Disables swap files to prevent unencrypted data from being written to disk
+- Disables undofiles to prevent unencrypted data from being stored
+- Disables shada to prevent history from being saved
+- Disables backup files to prevent unencrypted data from being stored
+
 ## Compatibility
 
-- **Neovim**: Uses Lua API (`vim.api.nvim_*` functions) from `plugin/gpg.lua`
-- **Vim 8+**: Uses Vimscript autocmds from `plugin/gpg.vim`
-
-Both implementations provide the same functionality.
+Vim 8+ compatible only.
 
 ## Credits
 
